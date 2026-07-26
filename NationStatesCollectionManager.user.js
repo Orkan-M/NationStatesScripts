@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         NationStates Collection Manager
+// @name         Orks' NationStates Collection Manager
 // @namespace    Orks
 // @version      13.3
-// @description  Intelligent Trading Card portfolio manager. Protects value, tracks duplicates, identifies real opportunities and avoids bad sells.
+// @description  Intelligent Trading Card portfolio manager. Tracks value, protects holdings, finds real sell opportunities and manages duplicates.
 // @author       Orks
 // @match        https://www.nationstates.net/page=deck/value_deck=1*
 // @match        https://www.nationstates.net/page=deck/collection=*
@@ -39,16 +39,6 @@ const colours = {
     junk:{
         bg:"rgba(255,60,60,0.25)",
         border:"#ff3333"
-    },
-
-    floor:{
-        bg:"rgba(150,150,150,0.20)",
-        border:"#888"
-    },
-
-    hold:{
-        bg:"rgba(180,180,180,0.15)",
-        border:"#999"
     }
 
 };
@@ -63,13 +53,20 @@ function money(v){
         return NaN;
 
 
-    return Number(
-        v
-        .replace(/,/g,"")
-        .replace(/[^\d.]/g,"")
-    );
+    const result =
+        Number(
+            v
+            .replace(/,/g,"")
+            .replace(/[^\d.]/g,"")
+        );
+
+
+    return isNaN(result)
+        ? NaN
+        : result;
 
 }
+
 
 
 
@@ -85,12 +82,14 @@ function decorate(row,type,text){
         `2px solid ${colours[type].border}`;
 
 
-
     const first =
         row.querySelector("td");
 
 
-    if(first && !first.innerHTML.includes("★")){
+    if(
+        first &&
+        !first.innerHTML.includes("★")
+    ){
 
         first.innerHTML =
             `<b>★ ${text}</b><br>` +
@@ -104,13 +103,14 @@ function decorate(row,type,text){
 
 
 
+
 let stats = {
 
     opportunity:0,
     premium:0,
     duplicate:0,
     junk:0,
-    hold:0,
+
     mv:0,
     bids:0
 
@@ -121,15 +121,10 @@ let stats = {
 
 
 
-/*
-================================================
-FIND COLLECTION TABLE
-================================================
-*/
-
-
 const table =
-    document.querySelector("table");
+    document.querySelector(
+        "table"
+    );
 
 
 if(!table)
@@ -139,45 +134,11 @@ if(!table)
 
 
 
-/*
-================================================
-PAGE PROTECTION
-================================================
-
-Only allow real collection tables.
-
-Prevents:
-- card detail pages
-- auctions
-- trade pages
-
-*/
-
-
-const headers =
-[...table.querySelectorAll("th")]
-.map(x=>x.innerText.toLowerCase())
-.join(" ");
-
-
-
-if(
-    !headers.includes("value")
-    ||
-    !headers.includes("bid")
-)
-{
-    return;
-}
-
-
-
 
 
 const rows =
-[...table.querySelectorAll("tr")]
-.slice(1);
-
+    [...table.querySelectorAll("tr")]
+    .slice(1);
 
 
 
@@ -192,22 +153,30 @@ rows.forEach(row=>{
 
 
 
+    /*
+        Collection page format:
+
+        0 = Season
+        1 = Card
+        2 = Ask
+        3 = Bid
+        4 = Value
+        5 = Copies
+    */
+
+
     if(cells.length < 5)
         return;
 
 
 
-
-
-    const txt =
+    const text =
         row.innerText;
 
 
 
-
-
     const rarity =
-        txt.match(
+        text.match(
         /(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/
         )?.[1];
 
@@ -215,9 +184,6 @@ rows.forEach(row=>{
 
     if(!rarity)
         return;
-
-
-
 
 
 
@@ -250,16 +216,13 @@ rows.forEach(row=>{
 
 
 
-
-
-
     /*
-        Ignore broken rows
+        Ignore broken rows.
 
-        Stops:
+        Prevents:
         Infinity%
-        fake sells
-        non-card tables
+        Fake sell opportunities
+        Auction pages being detected
     */
 
 
@@ -267,26 +230,24 @@ rows.forEach(row=>{
         isNaN(mv)
         ||
         mv <= 0
-    )
-    {
+    ){
+
         return;
+
     }
 
 
 
 
 
-
-
-    stats.mv += mv * copies;
+    stats.mv +=
+        mv * copies;
 
 
 
     if(!isNaN(bid))
-    {
-        stats.bids += bid * copies;
-    }
-
+        stats.bids +=
+            bid * copies;
 
 
 
@@ -299,10 +260,11 @@ rows.forEach(row=>{
     TRUE SELL OPPORTUNITY
     ================================================
 
-    Only sell when:
-    - real buyer exists
-    - buyer pays above MV
-    - not ridiculous malformed data
+    Only sell if:
+
+    - Someone is bidding above MV
+    - MV exists
+    - The premium is real
 
     */
 
@@ -311,17 +273,20 @@ rows.forEach(row=>{
         !isNaN(bid)
         &&
         bid > mv
-        &&
-        bid < mv * 5
     ){
 
         stats.opportunity++;
 
 
+        const gain =
+            ((bid-mv)/mv)*100;
+
+
+
         decorate(
             row,
             "opportunity",
-            `SELL OPPORTUNITY ${bid.toFixed(2)} (${Math.round((bid/mv)*100)}% MV)`
+            `SELL OPPORTUNITY ${bid.toFixed(2)} (+${gain.toFixed(0)}%)`
         );
 
 
@@ -335,11 +300,9 @@ rows.forEach(row=>{
 
 
 
-
-
     /*
     ================================================
-    PREMIUM HOLDINGS
+    PREMIUM COLLECTION
     ================================================
     */
 
@@ -368,12 +331,14 @@ rows.forEach(row=>{
 
 
 
-
-
     /*
     ================================================
     DUPLICATE INVESTMENTS
     ================================================
+
+    Multiple copies increase exposure
+    to future MV growth.
+
     */
 
 
@@ -394,41 +359,6 @@ rows.forEach(row=>{
         return;
 
     }
-
-
-
-
-
-
-
-
-
-    /*
-    ================================================
-    MARKET FLOOR
-    ================================================
-    */
-
-
-    if(
-        mv <= 0.50
-    ){
-
-        stats.hold++;
-
-
-        decorate(
-            row,
-            "floor",
-            `MARKET FLOOR MV ${mv.toFixed(2)}`
-        );
-
-
-        return;
-
-    }
-
-
 
 
 
@@ -467,24 +397,7 @@ rows.forEach(row=>{
 
 
 
-
-
-
-
-
-
-    stats.hold++;
-
-
-    decorate(
-        row,
-        "hold",
-        `HOLD MV ${mv.toFixed(2)}`
-    );
-
-
 });
-
 
 
 
@@ -505,36 +418,49 @@ document.createElement("div");
 
 
 
-box.style.padding="10px";
-box.style.margin="10px 0";
-box.style.border="2px solid #333";
-box.style.background="#111";
-box.style.color="white";
+box.style.padding =
+"10px";
+
+
+box.style.margin =
+"10px 0";
+
+
+box.style.border =
+"2px solid #333";
+
+
+box.style.background =
+"#111";
+
+
+box.style.color =
+"white";
 
 
 
 box.innerHTML = `
 
-<h3>📊 NationStates Collection Manager ${VERSION}</h3>
+<h3>📊 Orks' NationStates Collection Manager ${VERSION}</h3>
 
 🟢 Sell opportunities:
-<b>${stats.opportunity}</b><br>
+<b>${stats.opportunity}</b>
+<br>
 
 🟣 Premium cards:
-<b>${stats.premium}</b><br>
+<b>${stats.premium}</b>
+<br>
 
 🔷 Duplicate investments:
-<b>${stats.duplicate}</b><br>
+<b>${stats.duplicate}</b>
+<br>
 
 🔴 Junk review:
-<b>${stats.junk}</b><br>
-
-⚪ Hold:
-<b>${stats.hold}</b>
+<b>${stats.junk}</b>
 
 <hr>
 
-💰 Current Page MV:
+💰 Collection MV:
 <b>${stats.mv.toFixed(2)}</b> bank
 
 <br>
@@ -550,12 +476,12 @@ Rules:
 <li>Never sell at Market Value</li>
 <li>Never sell at junk value</li>
 <li>Sell only when buyers exceed MV</li>
-<li>Duplicates are investments</li>
-<li>Market growth rewards collectors</li>
-<li>Only collection tables are analysed</li>
+<li>Duplicates are long-term investments</li>
+<li>Market Value increases reward collectors</li>
 </ul>
 
 `;
+
 
 
 
