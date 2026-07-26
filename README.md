@@ -16,6 +16,9 @@ Enhances your Trading Card deck with intelligent collection analysis.
 - Protects valuable cards from being sold too cheaply
 - Displays a portfolio summary with useful collection metrics
 
+**Install**
+- **[Install NationStates Collection Manager](https://github.com/Orkan-M/NationStatesScripts/raw/refs/heads/main/NationStatesCollectionManager.user.js)**
+
 ---
 
 ### 🔎 NationStates Card Market Scout
@@ -30,20 +33,23 @@ Improves the live auction market by highlighting genuine buying opportunities.
 - Fades irrelevant auctions so genuine opportunities stand out
 - Uses Ask, Bid and Market Value together to avoid misleading signals
 
+**Install**
+- **[Install NationStates Card Market Scout](https://github.com/Orkan-M/NationStatesScripts/raw/refs/heads/main/NationStatesCardMarketScout.user.js)**
+
 ---
 
 ## 🚀 Installation
 
 1. Install the **Tampermonkey** browser extension.
-2. Open this repository and select the script you want to install.
-3. Click **Raw** in the top-right of the file.
-4. Tampermonkey should automatically open an installation prompt.
-5. Click **Install**.
+2. Click one of the **Install** links above.
+3. Tampermonkey should automatically open an installation prompt.
+4. Click **Install**.
 
-Repeat these steps for any additional scripts you wish to use.
+Alternatively, you can browse the repository, open a `.user.js` file and click **Raw** to install it.
 
 ---
 
 ## 💻 Compatibility
 
 These scripts are designed for the **NationStates Trading Cards** pages and are tested with **Tampermonkey** on modern Chromium-based browsers.
+```
