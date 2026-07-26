@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      13.0
+// @version      13.1
 // @description  Intelligent Trading Card portfolio manager. Protects value, tracks duplicates, identifies real opportunities and avoids bad sells.
 // @author       Orks
 // @match        https://www.nationstates.net/page=deck/value_deck=1*
@@ -361,7 +361,7 @@ box.style.color="white";
 
 box.innerHTML = `
 
-<h3>📊 Orks' NationStates Collection Manager ${VERSION}</h3>
+<h3>📊 NationStates Collection Manager ${VERSION}</h3>
 
 🟢 Sell opportunities:
 <b>${stats.opportunity}</b><br>
