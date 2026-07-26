@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      14.0
-// @description  Intelligent Trading Card portfolio manager. Scans the entire collection, tracks value, protects investments, detects genuine sells and duplicate opportunities.
+// @version      15.0
+// @description  Intelligent Trading Card portfolio manager. Tracks value, protects investments, detects genuine sells and duplicate opportunities.
 // @author       Orks
 // @match        https://www.nationstates.net/page=deck/value_deck=1*
 // @match        https://www.nationstates.net/page=deck/collection=*
-// @grant        GM_xmlhttpRequest
-// @connect      nationstates.net
+// @grant        none
 // ==/UserScript==
 
 
@@ -16,25 +15,35 @@
 "use strict";
 
 
-const VERSION = "v14.0";
+const VERSION = "v15.0";
 
 
 
 const colours = {
 
     opportunity:{
-        bg:"rgba(0,255,120,0.35)",
+        bg:"rgba(0,255,120,0.25)",
         border:"#00ff66"
     },
 
     premium:{
-        bg:"rgba(255,215,0,0.35)",
+        bg:"rgba(255,215,0,0.30)",
         border:"#ffd700"
     },
 
     duplicate:{
-        bg:"rgba(0,180,255,0.35)",
+        bg:"rgba(0,180,255,0.25)",
         border:"#0099ff"
+    },
+
+    junk:{
+        bg:"rgba(255,60,60,0.25)",
+        border:"#ff3333"
+    },
+
+    hold:{
+        bg:"rgba(180,180,180,0.15)",
+        border:"#999"
     }
 
 };
@@ -43,17 +52,23 @@ const colours = {
 
 
 
-function money(v){
+function money(value){
 
-    if(!v)
+    if(!value)
         return NaN;
 
 
-    return Number(
-        v
+    value =
+        value
         .replace(/,/g,"")
-        .replace(/[^\d.]/g,"")
-    );
+        .replace(/[^\d.]/g,"");
+
+
+    if(value==="")
+        return NaN;
+
+
+    return Number(value);
 
 }
 
@@ -61,427 +76,541 @@ function money(v){
 
 
 
+function decorate(row,type,text){
+
+    row.style.backgroundColor =
+        colours[type].bg;
 
 
-function request(url){
+    row.style.outline =
+        `2px solid ${colours[type].border}`;
 
-    return new Promise(resolve=>{
 
-        GM_xmlhttpRequest({
+    const first =
+        row.querySelector("td");
 
-            method:"GET",
-            url:url,
 
-            onload(response){
+    if(first && !first.innerHTML.includes("★")){
 
-                resolve(response.responseText);
+        first.innerHTML =
+            `<b>★ ${text}</b><br>` +
+            first.innerHTML;
 
-            },
+    }
 
-            onerror(){
+}
 
-                resolve("");
 
-            }
 
-        });
+
+
+/*
+================================================
+FIND CARD TABLE
+================================================
+*/
+
+
+let table = null;
+
+
+for(const t of document.querySelectorAll("table")){
+
+
+    const text =
+        t.innerText.toLowerCase();
+
+
+
+    if(
+        text.includes("card")
+        &&
+        text.includes("ask")
+        &&
+        text.includes("bid")
+        &&
+        text.includes("value")
+        &&
+        text.includes("copies")
+    ){
+
+        table=t;
+        break;
+
+    }
+
+}
+
+
+
+if(!table)
+    return;
+
+
+
+
+
+
+
+/*
+================================================
+COLUMN DETECTION
+================================================
+*/
+
+
+let columns = {
+
+    ask:null,
+    bid:null,
+    value:null,
+    copies:null
+
+};
+
+
+
+const headerRows =
+[
+    ...table.querySelectorAll("tr")
+];
+
+
+
+for(const row of headerRows){
+
+
+    [...row.children].forEach((cell,index)=>{
+
+
+        const text =
+            cell.innerText
+            .trim()
+            .toLowerCase();
+
+
+
+        if(text==="ask")
+            columns.ask=index;
+
+
+        if(text==="bid")
+            columns.bid=index;
+
+
+        if(text==="value")
+            columns.value=index;
+
+
+        if(text==="copies")
+            columns.copies=index;
 
 
     });
 
+
+}
+
+
+
+
+/*
+Fallback
+NationStates layout
+*/
+
+
+if(columns.value===null){
+
+    columns = {
+
+        ask:2,
+        bid:3,
+        value:4,
+        copies:5
+
+    };
+
 }
 
 
 
 
 
+const stats = {
+
+    opportunity:0,
+    premium:0,
+    duplicate:0,
+    junk:0,
+    hold:0,
+
+    mv:0,
+    bids:0
+
+};
 
 
-function parsePage(html){
-
-    const parser =
-        new DOMParser();
 
 
-    const doc =
-        parser.parseFromString(
-            html,
-            "text/html"
+
+
+
+
+/*
+================================================
+ANALYSE ROWS
+================================================
+*/
+
+
+const rows =
+[
+    ...table.querySelectorAll("tr")
+];
+
+
+
+
+rows.forEach(row=>{
+
+
+    const cells =
+    [
+        ...row.querySelectorAll("td")
+    ];
+
+
+
+    if(cells.length < 5)
+        return;
+
+
+
+
+    const text =
+        row.innerText;
+
+
+
+    const rarity =
+        text.match(
+        /(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/
         );
 
 
-    let table=null;
+
+    if(!rarity)
+        return;
 
 
 
-    for(
-        const t of doc.querySelectorAll("table")
+
+
+
+
+    const bid =
+        money(
+            cells[columns.bid]?.innerText
+        );
+
+
+
+    const mv =
+        money(
+            cells[columns.value]?.innerText
+        );
+
+
+
+    const copies =
+        money(
+            cells[columns.copies]?.innerText
+        ) || 1;
+
+
+
+
+
+    if(
+        isNaN(mv)
+        ||
+        mv<=0
+    )
+        return;
+
+
+
+
+
+    stats.mv += mv * copies;
+
+
+
+    if(!isNaN(bid))
+        stats.bids += bid * copies;
+
+
+
+
+
+
+
+
+
+    /*
+    =============================================
+    REAL SELL OPPORTUNITY
+    =============================================
+
+    Only:
+    - real bid
+    - bid above value
+    - not absurd
+
+    */
+
+
+    if(
+
+        !isNaN(bid)
+
+        &&
+
+        bid > mv
+
+        &&
+
+        bid < mv * 5
+
     ){
 
-        const text =
-            t.innerText.toLowerCase();
+
+        stats.opportunity++;
 
 
+        decorate(
+            row,
+            "opportunity",
+            `SELL OPPORTUNITY ${bid.toFixed(2)} (${Math.round((bid/mv)*100)}% MV)`
+        );
 
-        if(
-            text.includes("ask")
-            &&
-            text.includes("bid")
-            &&
-            text.includes("value")
-            &&
-            text.includes("copies")
-        ){
 
-            table=t;
-            break;
-
-        }
+        return;
 
     }
 
 
 
-    if(!table)
-        return [];
 
 
 
 
 
-    const cards=[];
+    /*
+    PREMIUM
+    */
 
 
+    if(mv>=10){
 
-    table.querySelectorAll("tr")
-    .forEach(row=>{
 
+        stats.premium++;
 
-        const cells =
-        [
-            ...row.querySelectorAll("td")
-        ];
 
+        decorate(
+            row,
+            "premium",
+            `PREMIUM MV ${mv.toFixed(2)}`
+        );
 
 
-        if(cells.length < 6)
-            return;
-
-
-
-        const rarity =
-            row.innerText.match(
-            /(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/
-            )?.[1];
-
-
-
-        if(!rarity)
-            return;
-
-
-
-        cards.push({
-
-            rowText:row.innerText,
-
-            ask:money(cells[2].innerText),
-
-            bid:money(cells[3].innerText),
-
-            mv:money(cells[4].innerText),
-
-            copies:money(cells[5].innerText) || 1,
-
-            rarity
-
-        });
-
-
-    });
-
-
-
-    return cards;
-
-}
-
-
-
-
-
-
-
-
-
-
-async function loadCollection(){
-
-
-    let all=[];
-
-
-    for(
-        let start=0;
-        start<2000;
-        start+=50
-    ){
-
-
-        const url =
-        `https://www.nationstates.net/page=deck/value_deck=1?start=${start}`;
-
-
-
-        const html =
-            await request(url);
-
-
-
-        if(!html)
-            break;
-
-
-
-        const cards =
-            parsePage(html);
-
-
-
-        if(cards.length===0)
-            break;
-
-
-
-        all.push(...cards);
-
-
-
-        if(cards.length < 50)
-            break;
-
+        return;
 
     }
 
 
 
-    return all;
-
-
-}
 
 
 
 
 
+    /*
+    DUPLICATES
+
+    Only valuable stacks
+    */
+
+
+    if(
+        copies>=5
+        &&
+        mv>=0.50
+    ){
+
+
+        stats.duplicate++;
+
+
+        decorate(
+            row,
+            "duplicate",
+            `DUPLICATE INVESTMENT x${copies}`
+        );
+
+
+        return;
+
+    }
 
 
 
 
 
-function createDashboard(stats){
-
-
-    const box =
-        document.createElement("div");
 
 
 
-    box.style.padding="10px";
-    box.style.margin="10px 0";
-    box.style.background="#111";
-    box.style.color="white";
-    box.style.border="2px solid #333";
+    /*
+    JUNK
+    */
+
+
+    if(
+
+        mv < 0.25
+
+        &&
+
+        copies <=2
+
+        &&
+
+        isNaN(bid)
+
+    ){
+
+
+        stats.junk++;
+
+
+        decorate(
+            row,
+            "junk",
+            `JUNK REVIEW MV ${mv.toFixed(2)}`
+        );
+
+
+        return;
+
+    }
 
 
 
-    box.innerHTML = `
+
+
+
+
+    stats.hold++;
+
+
+});
+
+
+
+
+
+
+
+
+
+/*
+================================================
+DASHBOARD
+================================================
+*/
+
+
+const box =
+document.createElement("div");
+
+
+
+box.style.padding="10px";
+box.style.margin="10px 0";
+box.style.border="2px solid #333";
+box.style.background="#111";
+box.style.color="white";
+
+
+
+box.innerHTML = `
 
 <h3>📊 NationStates Collection Manager ${VERSION}</h3>
 
-🌍 Full Collection Scan
-
-<hr>
 
 🟢 Sell opportunities:
-<b>${stats.sell}</b>
+<b>${stats.opportunity}</b><br>
 
-<br>
 
 🟣 Premium cards:
-<b>${stats.premium}</b>
+<b>${stats.premium}</b><br>
 
-<br>
 
 🔷 Duplicate investments:
-<b>${stats.duplicates}</b>
+<b>${stats.duplicate}</b><br>
+
+
+🔴 Junk review:
+<b>${stats.junk}</b><br>
+
+
+⚪ Other cards:
+<b>${stats.hold}</b>
+
 
 <hr>
 
-💰 Total Collection MV:
+
+💰 Collection MV:
 <b>${stats.mv.toFixed(2)}</b> bank
+
 
 <br>
 
-💵 Total bids:
-<b>${stats.bid.toFixed(2)}</b> bank
+
+💵 Current bids:
+<b>${stats.bids.toFixed(2)}</b> bank
+
 
 <hr>
 
-Pages scanned:
-<b>${stats.pages}</b>
+
+Rules:
+
+<ul>
+
+<li>Never sell below Market Value</li>
+
+<li>Premium cards are protected</li>
+
+<li>Duplicates are treated as investments</li>
+
+<li>Only meaningful bids trigger sell alerts</li>
+
+<li>Only visible collection pages are analysed</li>
+
+</ul>
 
 `;
 
 
 
-    document.body.prepend(box);
 
-}
-
-
-
-
-
-
-
-
-
-async function main(){
-
-
-    const loading =
-        document.createElement("div");
-
-
-    loading.innerHTML =
-    `
-    <b>📊 NationStates Collection Manager ${VERSION}</b>
-    <br>
-    Scanning entire collection...
-    `;
-
-
-    loading.style.padding="10px";
-    loading.style.background="#111";
-    loading.style.color="white";
-
-
-    document.body.prepend(loading);
-
-
-
-
-    const cards =
-        await loadCollection();
-
-
-
-
-    loading.remove();
-
-
-
-
-
-    const stats={
-
-        sell:0,
-        premium:0,
-        duplicates:0,
-        mv:0,
-        bid:0,
-        pages:Math.ceil(cards.length/50)
-
-    };
-
-
-
-
-    cards.forEach(card=>{
-
-
-        if(
-            !isNaN(card.mv)
-        ){
-
-            stats.mv +=
-                card.mv *
-                card.copies;
-
-        }
-
-
-
-        if(
-            !isNaN(card.bid)
-        ){
-
-            stats.bid +=
-                card.bid *
-                card.copies;
-
-        }
-
-
-
-
-        if(
-            !isNaN(card.bid)
-            &&
-            card.mv >= 1
-            &&
-            card.bid > card.mv
-            &&
-            card.bid < card.mv*5
-        ){
-
-            stats.sell++;
-
-        }
-
-
-
-
-        if(
-            card.mv >= 10
-        ){
-
-            stats.premium++;
-
-        }
-
-
-
-
-        if(
-            card.mv >= 1
-            &&
-            card.copies >= 5
-        ){
-
-            stats.duplicates++;
-
-        }
-
-
-
-    });
-
-
-
-
-
-    createDashboard(stats);
-
-
-}
-
-
-
-
-
-main();
+table.parentNode.insertBefore(
+    box,
+    table
+);
 
 
 
