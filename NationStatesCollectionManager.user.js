@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      13.5
+// @version      13.7
 // @description  Intelligent Trading Card portfolio manager. Tracks value, protects investments, detects genuine sells and duplicate opportunities.
 // @author       Orks
 // @match        https://www.nationstates.net/page=deck/value_deck=1*
@@ -15,13 +15,14 @@
 "use strict";
 
 
-const VERSION = "v13.5";
+const VERSION = "v13.7";
+
 
 
 const colours = {
 
     opportunity:{
-        bg:"rgba(0,255,120,0.25)",
+        bg:"rgba(0,255,120,0.30)",
         border:"#00ff66"
     },
 
@@ -41,6 +42,8 @@ const colours = {
     }
 
 };
+
+
 
 
 
@@ -66,7 +69,10 @@ function money(v){
 
 
 
+
+
 function decorate(row,type,text){
+
 
     row.style.backgroundColor =
         colours[type].bg;
@@ -76,11 +82,20 @@ function decorate(row,type,text){
         `2px solid ${colours[type].border}`;
 
 
+    row.style.opacity = "1";
+    row.style.filter = "none";
+
+
+
     const first =
         row.querySelector("td");
 
 
-    if(first && !first.innerHTML.includes("★")){
+    if(
+        first
+        &&
+        !first.innerHTML.includes("★")
+    ){
 
         first.innerHTML =
             `<b>★ ${text}</b><br>` +
@@ -89,6 +104,22 @@ function decorate(row,type,text){
     }
 
 }
+
+
+
+
+
+
+
+
+function fade(row){
+
+    row.style.opacity = "0.25";
+    row.style.filter = "grayscale(80%)";
+
+}
+
+
 
 
 
@@ -106,12 +137,13 @@ FIND NATIONSTATES CARD TABLE
 let table = null;
 
 
-for(const t of document.querySelectorAll("table")){
 
+for(
+    const t of document.querySelectorAll("table")
+){
 
     const text =
         t.innerText.toLowerCase();
-
 
 
     if(
@@ -142,46 +174,60 @@ if(!table)
 
 
 
+
+
 /*
 ================================================
-FIND COLUMN INDEXES
+COLUMN DETECTION
 ================================================
 */
 
 
-let columnMap = {};
+let columnMap = {
+
+    ask:2,
+    bid:3,
+    value:4,
+    copies:5
+
+};
 
 
 
-const firstRows =
+const headerRows =
 [
     ...table.querySelectorAll("tr")
 ]
-.slice(0,3);
+.slice(0,5);
 
 
 
-for(const row of firstRows){
+for(
+    const row of headerRows
+){
 
-    [...row.children].forEach((cell,index)=>{
+    [...row.children].forEach(
+    (cell,index)=>{
 
-        const name =
+
+        const text =
             cell.innerText
             .trim()
             .toLowerCase();
 
 
+
         if(
-            [
-                "ask",
-                "bid",
-                "value",
-                "copies"
-            ]
-            .includes(name)
+            text === "ask"
+            ||
+            text === "bid"
+            ||
+            text === "value"
+            ||
+            text === "copies"
         ){
 
-            columnMap[name] = index;
+            columnMap[text] = index;
 
         }
 
@@ -192,31 +238,17 @@ for(const row of firstRows){
 
 
 
+
+
+
+
+
+
 /*
-Fallback for NationStates layout
+================================================
+STATS
+================================================
 */
-
-if(
-    columnMap.ask === undefined ||
-    columnMap.bid === undefined ||
-    columnMap.value === undefined
-){
-
-    columnMap = {
-
-        ask:2,
-        bid:3,
-        value:4,
-        copies:5
-
-    };
-
-}
-
-
-
-
-
 
 
 const stats = {
@@ -248,7 +280,6 @@ const rows =
 
 
 
-
 rows.forEach(row=>{
 
 
@@ -266,7 +297,7 @@ rows.forEach(row=>{
 
 
 
-    const txt =
+    const text =
         row.innerText;
 
 
@@ -274,7 +305,7 @@ rows.forEach(row=>{
 
 
     const rarity =
-        txt.match(
+        text.match(
         /(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/
         )?.[1];
 
@@ -282,6 +313,7 @@ rows.forEach(row=>{
 
     if(!rarity)
         return;
+
 
 
 
@@ -305,7 +337,9 @@ rows.forEach(row=>{
     const copies =
         money(
             cells[columnMap.copies]?.innerText
-        ) || 1;
+        )
+        ||
+        1;
 
 
 
@@ -324,7 +358,10 @@ rows.forEach(row=>{
 
 
 
+
+
     stats.mv += mv * copies;
+
 
 
     if(!isNaN(bid))
@@ -338,13 +375,24 @@ rows.forEach(row=>{
 
 
 
+
     /*
+    =================================================
     SELL OPPORTUNITY
+
+    Only meaningful opportunities:
+
+    - MV must be at least 1
+    - Buyer must exceed MV
+    - Ignore unrealistic spikes
+    =================================================
     */
 
 
     if(
         !isNaN(bid)
+        &&
+        mv >= 1
         &&
         bid > mv
         &&
@@ -374,7 +422,11 @@ rows.forEach(row=>{
 
 
     /*
-    PREMIUM
+    =================================================
+    PREMIUM CARDS
+
+    High-value holdings.
+    =================================================
     */
 
 
@@ -405,12 +457,18 @@ rows.forEach(row=>{
 
 
     /*
-    DUPLICATES
+    =================================================
+    DUPLICATE INVESTMENTS
+
+    Only flag meaningful stacks.
+    =================================================
     */
 
 
     if(
         copies >= 5
+        &&
+        mv >= 1
     ){
 
         stats.duplicate++;
@@ -436,7 +494,11 @@ rows.forEach(row=>{
 
 
     /*
-    JUNK
+    =================================================
+    JUNK REVIEW
+
+    Genuine low-value dead cards.
+    =================================================
     */
 
 
@@ -457,7 +519,27 @@ rows.forEach(row=>{
             `JUNK REVIEW MV ${mv.toFixed(2)}`
         );
 
+
+        return;
+
     }
+
+
+
+
+
+
+
+    /*
+    =================================================
+    EVERYTHING ELSE
+
+    Fade irrelevant cards.
+    =================================================
+    */
+
+
+    fade(row);
 
 
 
@@ -482,6 +564,7 @@ const box =
 document.createElement("div");
 
 
+
 box.style.padding="10px";
 box.style.margin="10px 0";
 box.style.border="2px solid #333";
@@ -489,18 +572,22 @@ box.style.background="#111";
 box.style.color="white";
 
 
+
 box.innerHTML = `
 
 <h3>📊 NationStates Collection Manager ${VERSION}</h3>
 
 🟢 Sell opportunities:
-<b>${stats.opportunity}</b><br>
+<b>${stats.opportunity}</b>
+<br>
 
 🟣 Premium cards:
-<b>${stats.premium}</b><br>
+<b>${stats.premium}</b>
+<br>
 
 🔷 Duplicate investments:
-<b>${stats.duplicate}</b><br>
+<b>${stats.duplicate}</b>
+<br>
 
 🔴 Junk review:
 <b>${stats.junk}</b>
@@ -520,13 +607,16 @@ box.innerHTML = `
 Rules:
 
 <ul>
-<li>Never sell at Market Value</li>
-<li>Only highlight actionable cards</li>
-<li>Duplicates are treated as investments</li>
-<li>Buyers above MV are sell opportunities</li>
+<li>Only actionable cards stay highlighted</li>
+<li>Cards below MV are ignored</li>
+<li>Sell alerts require meaningful value</li>
+<li>Duplicate alerts require valuable stacks</li>
+<li>Everything else is faded</li>
 </ul>
 
 `;
+
+
 
 
 
