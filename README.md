@@ -1,2 +1,2 @@
 # NationStatesScripts
-My own custom scripts.
+Custom NationSates Scripts.
