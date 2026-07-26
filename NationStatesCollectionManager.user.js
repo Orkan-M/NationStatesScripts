@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      13.7
+// @version      13.8
 // @description  Intelligent Trading Card portfolio manager. Tracks value, protects investments, detects genuine sells and duplicate opportunities.
 // @author       Orks
 // @match        https://www.nationstates.net/page=deck/value_deck=1*
@@ -15,7 +15,7 @@
 "use strict";
 
 
-const VERSION = "v13.7";
+const VERSION = "v13.8";
 
 
 
@@ -32,12 +32,12 @@ const colours = {
     },
 
     duplicate:{
-        bg:"rgba(0,180,255,0.25)",
+        bg:"rgba(0,180,255,0.30)",
         border:"#0099ff"
     },
 
     junk:{
-        bg:"rgba(255,60,60,0.25)",
+        bg:"rgba(255,60,60,0.30)",
         border:"#ff3333"
     }
 
@@ -48,15 +48,14 @@ const colours = {
 
 
 
+function money(value){
 
-function money(v){
-
-    if(!v)
+    if(!value)
         return NaN;
 
 
     const cleaned =
-        v
+        value
         .replace(/,/g,"")
         .replace(/[^\d.]/g,"");
 
@@ -64,47 +63,6 @@ function money(v){
     return Number(cleaned);
 
 }
-
-
-
-
-
-
-
-function decorate(row,type,text){
-
-
-    row.style.backgroundColor =
-        colours[type].bg;
-
-
-    row.style.outline =
-        `2px solid ${colours[type].border}`;
-
-
-    row.style.opacity = "1";
-    row.style.filter = "none";
-
-
-
-    const first =
-        row.querySelector("td");
-
-
-    if(
-        first
-        &&
-        !first.innerHTML.includes("★")
-    ){
-
-        first.innerHTML =
-            `<b>★ ${text}</b><br>` +
-            first.innerHTML;
-
-    }
-
-}
-
 
 
 
@@ -126,10 +84,52 @@ function fade(row){
 
 
 
+function decorate(row,type,label){
+
+
+    row.style.opacity = "1";
+    row.style.filter = "none";
+
+
+    row.style.backgroundColor =
+        colours[type].bg;
+
+
+    row.style.outline =
+        `2px solid ${colours[type].border}`;
+
+
+
+    const first =
+        row.querySelector("td");
+
+
+
+    if(
+        first
+        &&
+        !first.innerHTML.includes("★")
+    ){
+
+        first.innerHTML =
+            `<b>★ ${label}</b><br>`+
+            first.innerHTML;
+
+    }
+
+}
+
+
+
+
+
+
+
+
 
 /*
 ================================================
-FIND NATIONSTATES CARD TABLE
+FIND CARD TABLE
 ================================================
 */
 
@@ -142,18 +142,20 @@ for(
     const t of document.querySelectorAll("table")
 ){
 
-    const text =
-        t.innerText.toLowerCase();
+    const headers =
+        t.innerText
+        .toLowerCase();
+
 
 
     if(
-        text.includes("ask")
+        headers.includes("ask")
         &&
-        text.includes("bid")
+        headers.includes("bid")
         &&
-        text.includes("value")
+        headers.includes("value")
         &&
-        text.includes("copies")
+        headers.includes("copies")
     ){
 
         table = t;
@@ -178,12 +180,12 @@ if(!table)
 
 /*
 ================================================
-COLUMN DETECTION
+COLUMN FINDER
 ================================================
 */
 
 
-let columnMap = {
+let columns = {
 
     ask:2,
     bid:3,
@@ -191,6 +193,7 @@ let columnMap = {
     copies:5
 
 };
+
 
 
 
@@ -202,12 +205,11 @@ const headerRows =
 
 
 
-for(
-    const row of headerRows
-){
+headerRows.forEach(row=>{
 
-    [...row.children].forEach(
-    (cell,index)=>{
+
+    [...row.children]
+    .forEach((cell,index)=>{
 
 
         const text =
@@ -227,13 +229,15 @@ for(
             text === "copies"
         ){
 
-            columnMap[text] = index;
+            columns[text]=index;
 
         }
 
+
     });
 
-}
+
+});
 
 
 
@@ -241,14 +245,6 @@ for(
 
 
 
-
-
-
-/*
-================================================
-STATS
-================================================
-*/
 
 
 const stats = {
@@ -270,17 +266,17 @@ const stats = {
 
 
 
-const rows =
+/*
+================================================
+PROCESS ROWS
+================================================
+*/
+
+
 [
     ...table.querySelectorAll("tr")
-];
-
-
-
-
-
-
-rows.forEach(row=>{
+]
+.forEach(row=>{
 
 
     const cells =
@@ -307,7 +303,7 @@ rows.forEach(row=>{
     const rarity =
         text.match(
         /(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/
-        )?.[1];
+        );
 
 
 
@@ -322,25 +318,24 @@ rows.forEach(row=>{
 
     const bid =
         money(
-            cells[columnMap.bid]?.innerText
+            cells[columns.bid]?.innerText
         );
 
 
 
     const mv =
         money(
-            cells[columnMap.value]?.innerText
+            cells[columns.value]?.innerText
         );
 
 
 
     const copies =
         money(
-            cells[columnMap.copies]?.innerText
+            cells[columns.copies]?.innerText
         )
         ||
         1;
-
 
 
 
@@ -375,17 +370,13 @@ rows.forEach(row=>{
 
 
 
-
     /*
-    =================================================
+    ================================================
     SELL OPPORTUNITY
 
-    Only meaningful opportunities:
+    Requires meaningful value.
 
-    - MV must be at least 1
-    - Buyer must exceed MV
-    - Ignore unrealistic spikes
-    =================================================
+    ================================================
     */
 
 
@@ -396,7 +387,7 @@ rows.forEach(row=>{
         &&
         bid > mv
         &&
-        bid < mv * 10
+        bid < mv * 5
     ){
 
         stats.opportunity++;
@@ -422,11 +413,9 @@ rows.forEach(row=>{
 
 
     /*
-    =================================================
-    PREMIUM CARDS
-
-    High-value holdings.
-    =================================================
+    ================================================
+    PREMIUM
+    ================================================
     */
 
 
@@ -456,12 +445,14 @@ rows.forEach(row=>{
 
 
 
-    /*
-    =================================================
-    DUPLICATE INVESTMENTS
 
-    Only flag meaningful stacks.
-    =================================================
+    /*
+    ================================================
+    DUPLICATES
+
+    Only valuable stacks.
+
+    ================================================
     */
 
 
@@ -493,12 +484,11 @@ rows.forEach(row=>{
 
 
 
-    /*
-    =================================================
-    JUNK REVIEW
 
-    Genuine low-value dead cards.
-    =================================================
+    /*
+    ================================================
+    JUNK
+    ================================================
     */
 
 
@@ -506,8 +496,6 @@ rows.forEach(row=>{
         mv < 0.25
         &&
         copies <= 2
-        &&
-        isNaN(bid)
     ){
 
         stats.junk++;
@@ -531,11 +519,9 @@ rows.forEach(row=>{
 
 
     /*
-    =================================================
+    ================================================
     EVERYTHING ELSE
-
-    Fade irrelevant cards.
-    =================================================
+    ================================================
     */
 
 
@@ -560,20 +546,20 @@ DASHBOARD
 */
 
 
-const box =
+const dashboard =
 document.createElement("div");
 
 
 
-box.style.padding="10px";
-box.style.margin="10px 0";
-box.style.border="2px solid #333";
-box.style.background="#111";
-box.style.color="white";
+dashboard.style.padding="10px";
+dashboard.style.margin="10px 0";
+dashboard.style.background="#111";
+dashboard.style.color="white";
+dashboard.style.border="2px solid #333";
 
 
 
-box.innerHTML = `
+dashboard.innerHTML = `
 
 <h3>📊 NationStates Collection Manager ${VERSION}</h3>
 
@@ -594,12 +580,12 @@ box.innerHTML = `
 
 <hr>
 
-💰 Collection MV:
+💰 Page MV:
 <b>${stats.mv.toFixed(2)}</b> bank
 
 <br>
 
-💵 Current bids:
+💵 Page bids:
 <b>${stats.bids.toFixed(2)}</b> bank
 
 <hr>
@@ -607,11 +593,11 @@ box.innerHTML = `
 Rules:
 
 <ul>
-<li>Only actionable cards stay highlighted</li>
-<li>Cards below MV are ignored</li>
-<li>Sell alerts require meaningful value</li>
-<li>Duplicate alerts require valuable stacks</li>
-<li>Everything else is faded</li>
+<li>Only actionable cards stay visible</li>
+<li>Cheap duplicates ignored</li>
+<li>High-value stacks highlighted</li>
+<li>Sell alerts require real demand</li>
+<li>Pagination supported</li>
 </ul>
 
 `;
@@ -619,9 +605,8 @@ Rules:
 
 
 
-
 table.parentNode.insertBefore(
-    box,
+    dashboard,
     table
 );
 
