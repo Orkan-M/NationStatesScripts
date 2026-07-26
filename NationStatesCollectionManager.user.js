@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      15.2
-// @description  Intelligent Trading Card portfolio manager. Tracks value, protects investments, detects genuine sells and duplicate opportunities.
+// @version      15.3
+// @description  Restored v13.5 logic with corrected parsing and portfolio protection.
 // @author       Orks
 // @match        https://www.nationstates.net/page=deck/value_deck=1*
-// @match        https://www.nationstates.net/page=deck/collection*
 // @grant        none
 // ==/UserScript==
 
@@ -15,143 +14,168 @@
 "use strict";
 
 
-const VERSION="v15.2";
+const VERSION="v15.3";
 
 
 
 const colours={
 
-sell:{
-bg:"rgba(0,255,120,.25)",
+
+opportunity:{
+bg:"rgba(0,255,120,0.25)",
 border:"#00ff66"
 },
 
+
 premium:{
-bg:"rgba(255,215,0,.25)",
+bg:"rgba(255,215,0,0.30)",
 border:"#ffd700"
 },
 
+
 duplicate:{
-bg:"rgba(0,180,255,.25)",
+bg:"rgba(0,180,255,0.25)",
 border:"#0099ff"
 },
 
+
 junk:{
-bg:"rgba(255,50,50,.25)",
+bg:"rgba(255,60,60,0.25)",
 border:"#ff3333"
+},
+
+
+floor:{
+bg:"rgba(150,150,150,0.20)",
+border:"#888"
+},
+
+
+hold:{
+bg:"rgba(180,180,180,0.15)",
+border:"#999"
 }
+
 
 };
 
 
 
+
+
 function money(v){
 
-if(!v) return NaN;
+if(!v)
+return NaN;
 
-return Number(
+
+v=v.trim();
+
+
+if(
+v==="—" ||
+v==="-" ||
+v===""
+)
+return NaN;
+
+
+let n =
 v
 .replace(/,/g,"")
-.replace(/[^\d.]/g,"")
-);
+.match(/[\d.]+/);
+
+
+return n ? Number(n[0]) : NaN;
 
 }
 
 
 
-function decorate(row,type,label){
 
-row.style.backgroundColor=colours[type].bg;
-row.style.outline=`2px solid ${colours[type].border}`;
 
-let first=row.querySelector("td");
+function decorate(row,type,text){
 
-if(first && !first.innerText.includes("★")){
+
+row.style.backgroundColor=
+colours[type].bg;
+
+
+row.style.outline=
+`2px solid ${colours[type].border}`;
+
+
+
+let first =
+row.querySelector("td");
+
+
+if(
+first &&
+!first.innerHTML.includes("★")
+){
 
 first.innerHTML=
-`<b>★ ${label}</b><br>`+
+`<b>★ ${text}</b><br>`+
 first.innerHTML;
 
 }
 
-}
-
-
-
-
-function findTable(){
-
-
-for(const table of document.querySelectorAll("table")){
-
-
-let text=table.innerText.toLowerCase();
-
-
-if(
-text.includes("ask") &&
-text.includes("bid") &&
-text.includes("value") &&
-text.includes("copies")
-){
-
-return table;
-
-}
 
 }
 
 
-return null;
-
-}
-
-
-
-
-function run(){
-
-
-
-if(document.querySelector("#ns-manager-dashboard"))
-return;
-
-
-
-const table=findTable();
-
-
-
-if(!table){
-
-setTimeout(run,1000);
-return;
-
-}
-
-
-
-
-
-let rows=[
-...table.querySelectorAll("tr")
-];
 
 
 
 
 let stats={
 
-sell:0,
+opportunity:0,
 premium:0,
 duplicate:0,
 junk:0,
-other:0,
-cards:0,
+floor:0,
+hold:0,
 mv:0,
-bid:0
+bids:0,
+cards:0
 
 };
+
+
+
+
+
+const table =
+[...document.querySelectorAll("table")]
+.find(t=>{
+
+let txt=t.innerText.toLowerCase();
+
+return(
+txt.includes("ask") &&
+txt.includes("bid") &&
+txt.includes("value") &&
+txt.includes("copies")
+);
+
+});
+
+
+
+if(!table)
+return;
+
+
+
+
+
+const rows =
+[
+...table.querySelectorAll("tr")
+];
+
 
 
 
@@ -159,97 +183,122 @@ bid:0
 rows.forEach(row=>{
 
 
-let cells=[
+const cells =
+[
 ...row.querySelectorAll("td")
 ];
 
 
-if(cells.length<5)
+
+/*
+Ignore headers/footer
+*/
+
+if(cells.length<6)
 return;
 
 
 
-let text=row.innerText;
+const txt =
+row.innerText;
 
 
 
-let rarity=
-text.match(
+const rarity =
+txt.match(
 /(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/
 );
+
 
 
 if(!rarity)
 return;
 
 
-stats.cards++;
-
-
-
-let numbers=
-cells.map(x=>money(x.innerText));
-
 
 
 /*
+
 NationStates layout:
 
-Auction
-Card
-Ask
-Bid
-Value
-Copies
+0 Auction
+1 Card
+2 Ask
+3 Bid
+4 Value
+5 Copies
 
 */
 
-let ask=numbers[1];
-let bid=numbers[2];
-let value=numbers[3];
-let copies=numbers[4]||1;
+
+const ask =
+money(cells[2].innerText);
+
+
+const bid =
+money(cells[3].innerText);
+
+
+const mv =
+money(cells[4].innerText);
+
+
+const copies =
+money(cells[5].innerText) || 1;
 
 
 
-
-if(isNaN(value))
+if(
+isNaN(mv)
+)
 return;
 
 
 
-stats.mv+=value*copies;
+stats.cards++;
+
+
+stats.mv += mv * copies;
+
 
 
 if(!isNaN(bid))
-stats.bid+=bid*copies;
+stats.bids += bid * copies;
+
+
 
 
 
 
 /*
-SELL RULE
+================================
+SELL OPPORTUNITY
+================================
 
-Only if someone is genuinely paying
-above market.
+Real buyers only.
+
+Bid must exceed MV.
+
 */
+
 
 if(
 !isNaN(bid)
 &&
-bid>value
+bid>mv
 &&
-bid>=1
-&&
-bid/value>=1.5
+mv>0
 ){
 
-stats.sell++;
+stats.opportunity++;
+
 
 decorate(
 row,
-"sell",
-`SELL OPPORTUNITY ${bid.toFixed(2)} (${Math.round(bid/value*100)}% MV)`
+"opportunity",
+`SELL OPPORTUNITY ${bid.toFixed(2)} (${Math.round((bid/mv)*100)}% MV)`
 );
+
 
 return;
 
@@ -259,20 +308,27 @@ return;
 
 
 
-/*
-PREMIUM
 
+/*
+================================
+PREMIUM HOLD
+================================
 */
 
-if(value>=10){
+
+if(
+mv>=10
+){
 
 stats.premium++;
+
 
 decorate(
 row,
 "premium",
-`PREMIUM MV ${value.toFixed(2)}`
+`PREMIUM MV ${mv.toFixed(2)}`
 );
+
 
 return;
 
@@ -282,19 +338,21 @@ return;
 
 
 
-/*
-DUPLICATES
 
-Only valuable stacks.
+
+/*
+================================
+DUPLICATE INVESTMENT
+================================
 */
+
 
 if(
 copies>=5
-&&
-value>=0.50
 ){
 
 stats.duplicate++;
+
 
 decorate(
 row,
@@ -302,6 +360,7 @@ row,
 `DUPLICATE INVESTMENT x${copies}`
 );
 
+
 return;
 
 }
@@ -310,19 +369,62 @@ return;
 
 
 
+
+
+/*
+================================
+MARKET FLOOR
+================================
+*/
+
+
 if(
-value<=0.01
+mv<=0.50
+){
+
+stats.floor++;
+
+
+decorate(
+row,
+"floor",
+`MARKET FLOOR MV ${mv.toFixed(2)}`
+);
+
+
+return;
+
+}
+
+
+
+
+
+
+/*
+================================
+JUNK
+================================
+*/
+
+
+if(
+mv<0.25
 &&
-copies<=1
+copies<=2
+&&
+isNaN(bid)
 ){
 
 stats.junk++;
 
+
 decorate(
 row,
 "junk",
-`JUNK REVIEW MV ${value.toFixed(2)}`
+`JUNK REVIEW MV ${mv.toFixed(2)}`
 );
+
 
 return;
 
@@ -330,7 +432,18 @@ return;
 
 
 
-stats.other++;
+
+
+
+
+stats.hold++;
+
+
+decorate(
+row,
+"hold",
+`HOLD MV ${mv.toFixed(2)}`
+);
 
 
 
@@ -341,12 +454,19 @@ stats.other++;
 
 
 
-let dash=document.createElement("div");
 
-dash.id="ns-manager-dashboard";
+/*
+================================
+DASHBOARD
+================================
+*/
 
 
-dash.style.cssText=
+const box =
+document.createElement("div");
+
+
+box.style.cssText=
 `
 padding:12px;
 margin:12px 0;
@@ -358,71 +478,84 @@ font-family:Arial;
 
 
 
-dash.innerHTML=
+
+box.innerHTML=
 
 `
 
 <h3>📊 NationStates Collection Manager ${VERSION}</h3>
 
+
 🟢 Sell opportunities:
-<b>${stats.sell}</b><br>
+<b>${stats.opportunity}</b><br>
+
 
 🟣 Premium cards:
 <b>${stats.premium}</b><br>
 
+
 🔷 Duplicate investments:
 <b>${stats.duplicate}</b><br>
+
 
 🔴 Junk review:
 <b>${stats.junk}</b><br>
 
-⚪ Other cards:
-<b>${stats.other}</b>
+
+⚪ Hold:
+<b>${stats.hold}</b>
+
 
 <hr>
+
 
 📦 Cards scanned:
 <b>${stats.cards}</b>
 
+
 <br>
 
-💰 Visible Page MV:
+
+💰 Current Page MV:
 <b>${stats.mv.toFixed(2)}</b> bank
 
+
 <br>
 
-💵 Visible bids:
-<b>${stats.bid.toFixed(2)}</b> bank
+
+💵 Current bids:
+<b>${stats.bids.toFixed(2)}</b> bank
+
 
 
 <hr>
 
+
 Rules:
 
 <ul>
+
 <li>Never sell below Market Value</li>
+
 <li>Premium cards are protected</li>
-<li>Duplicates require meaningful value</li>
-<li>Only strong bids create sell alerts</li>
-<li>Totals are for the visible page</li>
+
+<li>Duplicates are treated as investments</li>
+
+<li>Only genuine bids create sell alerts</li>
+
+<li>Low value cards are not automatically sold</li>
+
 </ul>
 
 `;
 
 
 
+
 table.parentNode.insertBefore(
-dash,
+box,
 table
 );
-
-
-
-}
-
-
-
-setTimeout(run,1500);
 
 
 
