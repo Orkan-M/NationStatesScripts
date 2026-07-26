@@ -1,19 +1,22 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      13.2
+// @version      13.3
 // @description  Intelligent Trading Card portfolio manager. Protects value, tracks duplicates, identifies real opportunities and avoids bad sells.
 // @author       Orks
-// @match        https://www.nationstates.net/page=deck*
+// @match        https://www.nationstates.net/page=deck/value_deck=1*
+// @match        https://www.nationstates.net/page=deck/collection=*
 // @grant        none
 // ==/UserScript==
+
 
 (() => {
 
 "use strict";
 
 
-const VERSION = "v13";
+const VERSION = "v13.3";
+
 
 
 const colours = {
@@ -52,6 +55,8 @@ const colours = {
 
 
 
+
+
 function money(v){
 
     if(!v)
@@ -68,13 +73,17 @@ function money(v){
 
 
 
+
+
 function decorate(row,type,text){
 
     row.style.backgroundColor =
         colours[type].bg;
 
+
     row.style.outline =
         `2px solid ${colours[type].border}`;
+
 
 
     const first =
@@ -84,12 +93,14 @@ function decorate(row,type,text){
     if(first && !first.innerHTML.includes("★")){
 
         first.innerHTML =
-            `<b>★ ${text}</b><br>`+
+            `<b>★ ${text}</b><br>` +
             first.innerHTML;
 
     }
 
 }
+
+
 
 
 
@@ -107,6 +118,16 @@ let stats = {
 
 
 
+
+
+
+/*
+================================================
+FIND COLLECTION TABLE
+================================================
+*/
+
+
 const table =
     document.querySelector("table");
 
@@ -116,9 +137,50 @@ if(!table)
 
 
 
+
+
+/*
+================================================
+PAGE PROTECTION
+================================================
+
+Only allow real collection tables.
+
+Prevents:
+- card detail pages
+- auctions
+- trade pages
+
+*/
+
+
+const headers =
+[...table.querySelectorAll("th")]
+.map(x=>x.innerText.toLowerCase())
+.join(" ");
+
+
+
+if(
+    !headers.includes("value")
+    ||
+    !headers.includes("bid")
+)
+{
+    return;
+}
+
+
+
+
+
 const rows =
 [...table.querySelectorAll("tr")]
 .slice(1);
+
+
+
+
 
 
 
@@ -128,12 +190,20 @@ rows.forEach(row=>{
     const cells =
         [...row.querySelectorAll("td")];
 
+
+
     if(cells.length < 5)
         return;
 
 
+
+
+
     const txt =
         row.innerText;
+
+
+
 
 
     const rarity =
@@ -142,16 +212,34 @@ rows.forEach(row=>{
         )?.[1];
 
 
+
+    if(!rarity)
+        return;
+
+
+
+
+
+
     const ask =
-        money(cells[2]?.innerText);
+        money(
+            cells[2]?.innerText
+        );
+
 
 
     const bid =
-        money(cells[3]?.innerText);
+        money(
+            cells[3]?.innerText
+        );
+
 
 
     const mv =
-        money(cells[4]?.innerText);
+        money(
+            cells[4]?.innerText
+        );
+
 
 
     const copies =
@@ -160,24 +248,62 @@ rows.forEach(row=>{
         ) || 1;
 
 
-    if(isNaN(mv))
+
+
+
+
+
+    /*
+        Ignore broken rows
+
+        Stops:
+        Infinity%
+        fake sells
+        non-card tables
+    */
+
+
+    if(
+        isNaN(mv)
+        ||
+        mv <= 0
+    )
+    {
         return;
+    }
+
+
+
+
+
 
 
     stats.mv += mv * copies;
 
 
+
     if(!isNaN(bid))
+    {
         stats.bids += bid * copies;
+    }
+
+
+
+
+
+
 
 
     /*
-        TRUE SELL OPPORTUNITY
+    ================================================
+    TRUE SELL OPPORTUNITY
+    ================================================
 
-        Only sell when somebody
-        actually values it above MV.
+    Only sell when:
+    - real buyer exists
+    - buyer pays above MV
+    - not ridiculous malformed data
 
-        Equality is ignored.
     */
 
 
@@ -185,9 +311,12 @@ rows.forEach(row=>{
         !isNaN(bid)
         &&
         bid > mv
+        &&
+        bid < mv * 5
     ){
 
         stats.opportunity++;
+
 
         decorate(
             row,
@@ -195,16 +324,23 @@ rows.forEach(row=>{
             `SELL OPPORTUNITY ${bid.toFixed(2)} (${Math.round((bid/mv)*100)}% MV)`
         );
 
+
         return;
 
     }
 
 
 
-    /*
-        PREMIUM HOLDINGS
 
-        Important cards.
+
+
+
+
+
+    /*
+    ================================================
+    PREMIUM HOLDINGS
+    ================================================
     */
 
 
@@ -214,11 +350,13 @@ rows.forEach(row=>{
 
         stats.premium++;
 
+
         decorate(
             row,
             "premium",
             `PREMIUM MV ${mv.toFixed(2)}`
         );
+
 
         return;
 
@@ -226,10 +364,16 @@ rows.forEach(row=>{
 
 
 
-    /*
-        DUPLICATE INVESTMENTS
 
-        More copies = more upside.
+
+
+
+
+
+    /*
+    ================================================
+    DUPLICATE INVESTMENTS
+    ================================================
     */
 
 
@@ -239,11 +383,13 @@ rows.forEach(row=>{
 
         stats.duplicate++;
 
+
         decorate(
             row,
             "duplicate",
             `DUPLICATE INVESTMENT x${copies}`
         );
+
 
         return;
 
@@ -251,11 +397,16 @@ rows.forEach(row=>{
 
 
 
-    /*
-        MARKET FLOOR
 
-        Cards around common pricing
-        are not sell targets.
+
+
+
+
+
+    /*
+    ================================================
+    MARKET FLOOR
+    ================================================
     */
 
 
@@ -265,11 +416,13 @@ rows.forEach(row=>{
 
         stats.hold++;
 
+
         decorate(
             row,
             "floor",
             `MARKET FLOOR MV ${mv.toFixed(2)}`
         );
+
 
         return;
 
@@ -277,10 +430,16 @@ rows.forEach(row=>{
 
 
 
-    /*
-        JUNK REVIEW
 
-        Only genuinely dead cards.
+
+
+
+
+
+    /*
+    ================================================
+    JUNK REVIEW
+    ================================================
     */
 
 
@@ -294,11 +453,13 @@ rows.forEach(row=>{
 
         stats.junk++;
 
+
         decorate(
             row,
             "junk",
             `JUNK REVIEW MV ${mv.toFixed(2)}`
         );
+
 
         return;
 
@@ -306,7 +467,14 @@ rows.forEach(row=>{
 
 
 
+
+
+
+
+
+
     stats.hold++;
+
 
     decorate(
         row,
@@ -320,8 +488,15 @@ rows.forEach(row=>{
 
 
 
+
+
+
+
+
 /*
-    Dashboard
+================================================
+DASHBOARD
+================================================
 */
 
 
@@ -329,11 +504,13 @@ const box =
 document.createElement("div");
 
 
+
 box.style.padding="10px";
 box.style.margin="10px 0";
 box.style.border="2px solid #333";
 box.style.background="#111";
 box.style.color="white";
+
 
 
 box.innerHTML = `
@@ -375,14 +552,19 @@ Rules:
 <li>Sell only when buyers exceed MV</li>
 <li>Duplicates are investments</li>
 <li>Market growth rewards collectors</li>
+<li>Only collection tables are analysed</li>
 </ul>
 
 `;
+
+
 
 
 table.parentNode.insertBefore(
     box,
     table
 );
+
+
 
 })();
