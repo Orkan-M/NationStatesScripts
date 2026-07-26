@@ -47,15 +47,3 @@ Repeat these steps for any additional scripts you wish to use.
 ## 💻 Compatibility
 
 These scripts are designed for the **NationStates Trading Cards** pages and are tested with **Tampermonkey** on modern Chromium-based browsers.
-
----
-
-## 🤝 Contributing
-
-Suggestions, bug reports and feature requests are welcome. Feel free to open an issue or submit a pull request.
-
----
-
-## ⚠️ Disclaimer
-
-These are unofficial community scripts and are **not affiliated with or endorsed by NationStates**.
