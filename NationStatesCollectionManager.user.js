@@ -18,7 +18,6 @@
 const VERSION = "v13.4";
 
 
-
 const colours = {
 
     opportunity:{
@@ -53,15 +52,13 @@ function money(v){
         return NaN;
 
 
-    const n =
-        Number(
-            v
-            .replace(/,/g,"")
-            .replace(/[^\d.]/g,"")
-        );
+    const cleaned =
+        v
+        .replace(/,/g,"")
+        .replace(/[^\d.]/g,"");
 
 
-    return isNaN(n) ? NaN : n;
+    return Number(cleaned);
 
 }
 
@@ -101,34 +98,30 @@ function decorate(row,type,text){
 
 /*
 ================================================
-FIND THE CORRECT TABLE
+FIND NATIONSTATES CARD TABLE
 ================================================
 */
-
-
-const tables =
-[
-    ...document.querySelectorAll("table")
-];
-
 
 
 let table = null;
 
 
+for(const t of document.querySelectorAll("table")){
 
-for(const t of tables){
 
+    const text =
+        t.innerText.toLowerCase();
 
-    const headers =
-    [...t.querySelectorAll("th")]
-    .map(x=>x.innerText.trim().toLowerCase());
 
 
     if(
-        headers.includes("bid") &&
-        headers.includes("value") &&
-        headers.includes("copies")
+        text.includes("ask")
+        &&
+        text.includes("bid")
+        &&
+        text.includes("value")
+        &&
+        text.includes("copies")
     ){
 
         table = t;
@@ -149,45 +142,81 @@ if(!table)
 
 
 
-
-
 /*
 ================================================
-MAP COLUMNS BY HEADER
+FIND COLUMN INDEXES
 ================================================
 */
 
 
-const headerCells =
+let columnMap = {};
+
+
+
+const firstRows =
 [
-    ...table.querySelectorAll("tr:first-child th")
-];
-
-
-const columns = {};
+    ...table.querySelectorAll("tr")
+]
+.slice(0,3);
 
 
 
-headerCells.forEach((h,i)=>{
+for(const row of firstRows){
 
-    columns[
-        h.innerText
-        .trim()
-        .toLowerCase()
-    ] = i;
+    [...row.children].forEach((cell,index)=>{
 
-});
+        const name =
+            cell.innerText
+            .trim()
+            .toLowerCase();
 
 
+        if(
+            [
+                "ask",
+                "bid",
+                "value",
+                "copies"
+            ]
+            .includes(name)
+        ){
+
+            columnMap[name] = index;
+
+        }
+
+    });
+
+}
 
 
 
 
 /*
-================================================
-STATS
-================================================
+Fallback for NationStates layout
 */
+
+if(
+    columnMap.ask === undefined ||
+    columnMap.bid === undefined ||
+    columnMap.value === undefined
+){
+
+    columnMap = {
+
+        ask:2,
+        bid:3,
+        value:4,
+        copies:5
+
+    };
+
+}
+
+
+
+
+
 
 
 const stats = {
@@ -208,11 +237,11 @@ const stats = {
 
 
 
+
 const rows =
 [
     ...table.querySelectorAll("tr")
-]
-.slice(1);
+];
 
 
 
@@ -258,40 +287,30 @@ rows.forEach(row=>{
 
 
 
-    const ask =
-        money(
-            cells[columns["ask"]]?.innerText
-        );
-
-
 
     const bid =
         money(
-            cells[columns["bid"]]?.innerText
+            cells[columnMap.bid]?.innerText
         );
 
 
 
     const mv =
         money(
-            cells[columns["value"]]?.innerText
+            cells[columnMap.value]?.innerText
         );
 
 
 
     const copies =
         money(
-            cells[columns["copies"]]?.innerText
+            cells[columnMap.copies]?.innerText
         ) || 1;
 
 
 
 
 
-
-    /*
-        Ignore broken data
-    */
 
 
     if(
@@ -305,9 +324,7 @@ rows.forEach(row=>{
 
 
 
-
     stats.mv += mv * copies;
-
 
 
     if(!isNaN(bid))
@@ -322,14 +339,7 @@ rows.forEach(row=>{
 
 
     /*
-    ================================================
     SELL OPPORTUNITY
-
-    Only:
-    - real buyer exists
-    - buyer pays above MV
-    - not corrupted data
-    ================================================
     */
 
 
@@ -364,11 +374,7 @@ rows.forEach(row=>{
 
 
     /*
-    ================================================
-    PREMIUM HOLDINGS
-
-    Valuable cards only.
-    ================================================
+    PREMIUM
     */
 
 
@@ -399,11 +405,7 @@ rows.forEach(row=>{
 
 
     /*
-    ================================================
-    DUPLICATE INVESTMENTS
-
-    Multiple copies create upside.
-    ================================================
+    DUPLICATES
     */
 
 
@@ -434,11 +436,7 @@ rows.forEach(row=>{
 
 
     /*
-    ================================================
-    JUNK REVIEW
-
-    Only genuine dead cards.
-    ================================================
+    JUNK
     */
 
 
@@ -458,9 +456,6 @@ rows.forEach(row=>{
             "junk",
             `JUNK REVIEW MV ${mv.toFixed(2)}`
         );
-
-
-        return;
 
     }
 
@@ -487,7 +482,6 @@ const box =
 document.createElement("div");
 
 
-
 box.style.padding="10px";
 box.style.margin="10px 0";
 box.style.border="2px solid #333";
@@ -495,61 +489,44 @@ box.style.background="#111";
 box.style.color="white";
 
 
-
 box.innerHTML = `
 
-<h3>📊 Orks' NationStates Collection Manager ${VERSION}</h3>
-
+<h3>📊 NationStates Collection Manager ${VERSION}</h3>
 
 🟢 Sell opportunities:
-<b>${stats.opportunity}</b>
-<br>
-
+<b>${stats.opportunity}</b><br>
 
 🟣 Premium cards:
-<b>${stats.premium}</b>
-<br>
-
+<b>${stats.premium}</b><br>
 
 🔷 Duplicate investments:
-<b>${stats.duplicate}</b>
-<br>
-
+<b>${stats.duplicate}</b><br>
 
 🔴 Junk review:
 <b>${stats.junk}</b>
 
-
 <hr>
-
 
 💰 Collection MV:
 <b>${stats.mv.toFixed(2)}</b> bank
 
-
 <br>
-
 
 💵 Current bids:
 <b>${stats.bids.toFixed(2)}</b> bank
 
-
 <hr>
-
 
 Rules:
 
 <ul>
 <li>Never sell at Market Value</li>
-<li>Never sell at junk value</li>
-<li>Only sell when buyers exceed MV</li>
-<li>Duplicates are investments</li>
-<li>Only actionable cards are highlighted</li>
+<li>Only highlight actionable cards</li>
+<li>Duplicates are treated as investments</li>
+<li>Buyers above MV are sell opportunities</li>
 </ul>
 
 `;
-
-
 
 
 
