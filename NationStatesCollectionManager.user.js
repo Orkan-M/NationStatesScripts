@@ -1,13 +1,12 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      13.1
+// @version      13.2
 // @description  Intelligent Trading Card portfolio manager. Protects value, tracks duplicates, identifies real opportunities and avoids bad sells.
 // @author       Orks
-// @match        https://www.nationstates.net/page=deck/value_deck=1*
+// @match        https://www.nationstates.net/page=deck*
 // @grant        none
 // ==/UserScript==
-
 
 (() => {
 
@@ -129,15 +128,12 @@ rows.forEach(row=>{
     const cells =
         [...row.querySelectorAll("td")];
 
-
     if(cells.length < 5)
         return;
 
 
-
     const txt =
         row.innerText;
-
 
 
     const rarity =
@@ -146,20 +142,16 @@ rows.forEach(row=>{
         )?.[1];
 
 
-
     const ask =
         money(cells[2]?.innerText);
-
 
 
     const bid =
         money(cells[3]?.innerText);
 
 
-
     const mv =
         money(cells[4]?.innerText);
-
 
 
     const copies =
@@ -168,19 +160,15 @@ rows.forEach(row=>{
         ) || 1;
 
 
-
     if(isNaN(mv))
         return;
-
 
 
     stats.mv += mv * copies;
 
 
-
     if(!isNaN(bid))
         stats.bids += bid * copies;
-
 
 
     /*
@@ -213,8 +201,6 @@ rows.forEach(row=>{
 
 
 
-
-
     /*
         PREMIUM HOLDINGS
 
@@ -237,8 +223,6 @@ rows.forEach(row=>{
         return;
 
     }
-
-
 
 
 
@@ -267,8 +251,6 @@ rows.forEach(row=>{
 
 
 
-
-
     /*
         MARKET FLOOR
 
@@ -292,8 +274,6 @@ rows.forEach(row=>{
         return;
 
     }
-
-
 
 
 
@@ -326,8 +306,6 @@ rows.forEach(row=>{
 
 
 
-
-
     stats.hold++;
 
     decorate(
@@ -338,7 +316,6 @@ rows.forEach(row=>{
 
 
 });
-
 
 
 
@@ -403,12 +380,9 @@ Rules:
 `;
 
 
-
 table.parentNode.insertBefore(
     box,
     table
 );
-
-
 
 })();
