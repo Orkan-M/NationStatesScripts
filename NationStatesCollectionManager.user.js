@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         NationStates Collection Manager
 // @namespace    Orks
-// @version      15.1
+// @version      15.2
 // @description  Intelligent Trading Card portfolio manager. Tracks value, protects investments, detects genuine sells and duplicate opportunities.
 // @author       Orks
 // @match        https://www.nationstates.net/page=deck/value_deck=1*
-// @match        https://www.nationstates.net/page=deck/collection=*
+// @match        https://www.nationstates.net/page=deck/collection*
 // @grant        none
 // ==/UserScript==
 
@@ -15,28 +15,29 @@
 "use strict";
 
 
-const VERSION="v15.1";
+const VERSION="v15.2";
+
 
 
 const colours={
 
 sell:{
-bg:"rgba(0,255,120,0.25)",
+bg:"rgba(0,255,120,.25)",
 border:"#00ff66"
 },
 
 premium:{
-bg:"rgba(255,215,0,0.25)",
+bg:"rgba(255,215,0,.25)",
 border:"#ffd700"
 },
 
 duplicate:{
-bg:"rgba(0,150,255,0.25)",
+bg:"rgba(0,180,255,.25)",
 border:"#0099ff"
 },
 
 junk:{
-bg:"rgba(255,50,50,0.20)",
+bg:"rgba(255,50,50,.25)",
 border:"#ff3333"
 }
 
@@ -48,27 +49,27 @@ function money(v){
 
 if(!v) return NaN;
 
-let x=v
+return Number(
+v
 .replace(/,/g,"")
-.replace(/[^\d.]/g,"");
-
-return Number(x);
+.replace(/[^\d.]/g,"")
+);
 
 }
 
 
 
-function mark(row,type,text){
+function decorate(row,type,label){
 
 row.style.backgroundColor=colours[type].bg;
 row.style.outline=`2px solid ${colours[type].border}`;
 
 let first=row.querySelector("td");
 
-if(first && !first.innerHTML.includes("★")){
+if(first && !first.innerText.includes("★")){
 
 first.innerHTML=
-`<b>★ ${text}</b><br>`+
+`<b>★ ${label}</b><br>`+
 first.innerHTML;
 
 }
@@ -78,105 +79,145 @@ first.innerHTML;
 
 
 
-/*
- FIND CARD TABLE
-*/
+function findTable(){
 
 
-let table=null;
+for(const table of document.querySelectorAll("table")){
 
 
-for(const t of document.querySelectorAll("table")){
+let text=table.innerText.toLowerCase();
 
-let h=t.innerText.toLowerCase();
 
 if(
-h.includes("ask") &&
-h.includes("bid") &&
-h.includes("value") &&
-h.includes("copies")
+text.includes("ask") &&
+text.includes("bid") &&
+text.includes("value") &&
+text.includes("copies")
 ){
 
-table=t;
-break;
+return table;
 
 }
 
 }
 
 
-if(!table) return;
+return null;
+
+}
 
 
 
-/*
- COLUMN MAP
-*/
 
-
-let map={
-ask:2,
-bid:3,
-value:4,
-copies:5
-};
+function run(){
 
 
 
-const stats={
+if(document.querySelector("#ns-manager-dashboard"))
+return;
+
+
+
+const table=findTable();
+
+
+
+if(!table){
+
+setTimeout(run,1000);
+return;
+
+}
+
+
+
+
+
+let rows=[
+...table.querySelectorAll("tr")
+];
+
+
+
+
+let stats={
 
 sell:0,
 premium:0,
 duplicate:0,
 junk:0,
 other:0,
+cards:0,
 mv:0,
-bid:0,
-cards:0
+bid:0
 
 };
 
 
 
-/*
- SCAN
-*/
+
+rows.forEach(row=>{
 
 
-[...table.querySelectorAll("tr")].forEach(row=>{
+let cells=[
+...row.querySelectorAll("td")
+];
 
 
-let cells=[...row.querySelectorAll("td")];
-
-if(cells.length<5)return;
+if(cells.length<5)
+return;
 
 
 
 let text=row.innerText;
 
 
-if(
-!/(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/.test(text)
-)
+
+let rarity=
+text.match(
+/(COMMON|UNCOMMON|RARE|ULTRA-RARE|EPIC|LEGENDARY)/
+);
+
+
+if(!rarity)
 return;
-
-
-
-let mv=money(cells[map.value]?.innerText);
-
-let bid=money(cells[map.bid]?.innerText);
-
-let copies=money(cells[map.copies]?.innerText)||1;
-
-
-
-if(isNaN(mv))return;
-
 
 
 stats.cards++;
 
-stats.mv+=mv*copies;
+
+
+let numbers=
+cells.map(x=>money(x.innerText));
+
+
+
+/*
+NationStates layout:
+
+Auction
+Card
+Ask
+Bid
+Value
+Copies
+
+*/
+
+let ask=numbers[1];
+let bid=numbers[2];
+let value=numbers[3];
+let copies=numbers[4]||1;
+
+
+
+
+if(isNaN(value))
+return;
+
+
+
+stats.mv+=value*copies;
 
 
 if(!isNaN(bid))
@@ -184,27 +225,30 @@ stats.bid+=bid*copies;
 
 
 
-/*
- SELL
-*/
 
+/*
+SELL RULE
+
+Only if someone is genuinely paying
+above market.
+*/
 
 if(
 !isNaN(bid)
 &&
-bid>mv
+bid>value
 &&
 bid>=1
 &&
-bid<=(mv*10)
+bid/value>=1.5
 ){
 
 stats.sell++;
 
-mark(
+decorate(
 row,
 "sell",
-`SELL OPPORTUNITY ${bid.toFixed(2)} (${Math.round((bid/mv)*100)}% MV)`
+`SELL OPPORTUNITY ${bid.toFixed(2)} (${Math.round(bid/value*100)}% MV)`
 );
 
 return;
@@ -214,19 +258,20 @@ return;
 
 
 
+
 /*
- PREMIUM
+PREMIUM
+
 */
 
-
-if(mv>=10){
+if(value>=10){
 
 stats.premium++;
 
-mark(
+decorate(
 row,
 "premium",
-`PREMIUM MV ${mv.toFixed(2)}`
+`PREMIUM MV ${value.toFixed(2)}`
 );
 
 return;
@@ -236,22 +281,22 @@ return;
 
 
 
+
 /*
- DUPLICATES
+DUPLICATES
 
- Only protect meaningful stacks
+Only valuable stacks.
 */
-
 
 if(
 copies>=5
 &&
-mv>=0.50
+value>=0.50
 ){
 
 stats.duplicate++;
 
-mark(
+decorate(
 row,
 "duplicate",
 `DUPLICATE INVESTMENT x${copies}`
@@ -264,32 +309,20 @@ return;
 
 
 
-/*
- JUNK
-
- Much stricter
-*/
-
 
 if(
-mv<=0.01
+value<=0.01
 &&
-copies===1
-&&
-isNaN(bid)
+copies<=1
 ){
 
 stats.junk++;
 
-if(stats.junk<=10){
-
-mark(
+decorate(
 row,
 "junk",
-`JUNK REVIEW MV ${mv.toFixed(2)}`
+`JUNK REVIEW MV ${value.toFixed(2)}`
 );
-
-}
 
 return;
 
@@ -308,23 +341,26 @@ stats.other++;
 
 
 
-/*
- DASHBOARD
-*/
+let dash=document.createElement("div");
+
+dash.id="ns-manager-dashboard";
 
 
-let box=document.createElement("div");
+dash.style.cssText=
+`
+padding:12px;
+margin:12px 0;
+background:#111;
+color:white;
+border:2px solid #333;
+font-family:Arial;
+`;
 
 
-box.style.padding="10px";
-box.style.margin="10px 0";
-box.style.background="#111";
-box.style.color="white";
-box.style.border="2px solid #333";
 
+dash.innerHTML=
 
-
-box.innerHTML=`
+`
 
 <h3>📊 NationStates Collection Manager ${VERSION}</h3>
 
@@ -364,17 +400,11 @@ box.innerHTML=`
 Rules:
 
 <ul>
-
 <li>Never sell below Market Value</li>
-
 <li>Premium cards are protected</li>
-
 <li>Duplicates require meaningful value</li>
-
 <li>Only strong bids create sell alerts</li>
-
 <li>Totals are for the visible page</li>
-
 </ul>
 
 `;
@@ -382,9 +412,17 @@ Rules:
 
 
 table.parentNode.insertBefore(
-box,
+dash,
 table
 );
+
+
+
+}
+
+
+
+setTimeout(run,1500);
 
 
 
